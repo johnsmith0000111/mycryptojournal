@@ -1,1 +1,1 @@
-# my-crypto-journal
+# mycryptojournal
