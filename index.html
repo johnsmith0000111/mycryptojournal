@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto Journal - v30 (TP Checkboxes)</title>
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        :root { --primary: #2563eb; --success: #16a34a; --danger: #dc2626; --bg: #f8fafc; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; padding: 10px; }
+        .container { max-width: 100%; background: white; padding: 15px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 15px; }
+        .stat-card { background: #fff; padding: 12px; border: 1px solid #e2e8f0; border-radius: 8px; text-align: center; border-top: 3px solid var(--primary); }
+        .stat-card p { margin: 5px 0 0; font-size: 18px; font-weight: bold; }
+        
+        .table-container { overflow-x: auto; border: 1px solid #e2e8f0; border-radius: 8px; }
+        table { width: 100%; border-collapse: collapse; font-size: 11px; min-width: 1500px; }
+        th, td { border-bottom: 1px solid #e2e8f0; padding: 8px 4px; text-align: center; }
+        th { background: #f8fafc; color: #64748b; font-size: 10px; text-transform: uppercase; }
+        
+        /* TP Cell with Checkbox */
+        .tp-wrap { display: flex; align-items: center; gap: 4px; padding: 2px; }
+        .tp-check { width: 16px; height: 16px; cursor: pointer; }
+        
+        input { 
+            border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px; 
+            font-size: 11px; text-align: center; width: 100%; box-sizing: border-box; 
+        }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+        
+        /* Hit Target Highlight */
+        .hit { background-color: #dbeafe !important; border-color: var(--primary); }
+
+        select { border: 1px solid #cbd5e1; border-radius: 4px; padding: 5px; width: 100%; }
+        .row-profit { background-color: #dcfce7 !important; }
+        .row-loss { background-color: #fee2e2 !important; }
+        
+        .btn { padding: 10px 20px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; }
+        .btn-pdf { background: #7c3aed; }
+        .btn-clear { background: #64748b; }
+        .add-btn { background: var(--success); border-radius: 4px; border: none; color: white; padding: 2px 6px; cursor: pointer; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h2 style="margin:0;">💹 Crypto Journal v30</h2>
+        <div style="display: flex; gap: 10px;">
+            <input type="month" id="monthSelect" value="2026-04" onchange="generateTable()" style="width: auto; border: 1px solid #ddd;">
+            <button class="btn btn-pdf" onclick="downloadPDF()">📄 PDF Report</button>
+            <button class="btn btn-clear" onclick="clearData()">🔄 Reset</button>
+        </div>
+    </div>
+
+    <div class="stats-grid">
+        <div class="stat-card"><h4>Turnover</h4><p id="stat-turnover">$0</p></div>
+        <div class="stat-card" style="border-top-color: var(--success);"><h4>Net Profit</h4><p id="stat-profit">$0.00</p></div>
+        <div class="stat-card" style="border-top-color: var(--danger);"><h4>Total Loss</h4><p id="stat-loss">$0.00</p></div>
+        <div class="stat-card"><h4>Trades</h4><p id="stat-trades">0</p></div>
+    </div>
+
+    <div class="table-container">
+        <table id="tradingTable">
+            <thead>
+                <tr>
+                    <th style="width:70px">Date</th>
+                    <th style="width:70px">Side</th>
+                    <th style="width:75px">Margin</th>
+                    <th style="width:50px">Lev</th>
+                    <th style="width:85px">Entry</th>
+                    <th style="width:85px">Exit</th>
+                    <th style="background:#e0f2fe; width:90px">TP1 ✅</th>
+                    <th style="background:#e0f2fe; width:90px">TP2 ✅</th>
+                    <th style="background:#e0f2fe; width:90px">TP3 ✅</th>
+                    <th style="background:#e0f2fe; width:90px">TP4 ✅</th>
+                    <th style="background:#e0f2fe; width:90px">TP5 ✅</th>
+                    <th style="background:#e0f2fe; width:90px">TP6 ✅</th>
+                    <th style="width:70px">ROI %</th>
+                    <th style="width:90px">P/L $</th>
+                    <th style="width:30px">Act</th>
+                </tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    const storageKey = 'CryptoCalc_v30';
+    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+    function generateTable() {
+        const monthVal = document.getElementById('monthSelect').value;
+        const [year, month] = monthVal.split('-');
+        const daysInMonth = new Date(year, month, 0).getDate();
+        const tbody = document.getElementById('tableBody');
+        tbody.innerHTML = '';
+        const savedData = JSON.parse(localStorage.getItem(storageKey + '_' + monthVal)) || {};
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateObj = new Date(year, month - 1, d);
+            const dKey = `day_${d}`;
+            const trades = savedData[dKey] || [{}]; 
+            trades.forEach((t, i) => tbody.appendChild(createRow(d, dayNames[dateObj.getDay()], t, i === 0)));
+        }
+        updateAll();
+    }
+
+    function createRow(day, dName, data, isFirst) {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-day', day);
+
+        let tpCols = '';
+        for(let i=1; i<=6; i++) {
+            const val = data[`tp${i}`] || '';
+            const hit = data[`tp${i}_hit`] ? 'checked' : '';
+            const hitClass = data[`tp${i}_hit`] ? 'hit' : '';
+            tpCols += `
+                <td>
+                    <div class="tp-wrap">
+                        <input type="checkbox" class="tp-check" ${hit} onchange="updateAll()">
+                        <input type="number" step="any" class="tp${i} ${hitClass}" value="${val}" oninput="updateAll()">
+                    </div>
+                </td>`;
+        }
+
+        tr.innerHTML = `
+            <td>${isFirst ? `<strong>${day}</strong> <small>${dName}</small> <button class="add-btn" onclick="addTrade(${day})">+</button>` : ''}</td>
+            <td><select class="side" onchange="updateAll()">
+                <option value="LONG" ${data.side==='LONG'?'selected':''}>LONG</option>
+                <option value="SHORT" ${data.side==='SHORT'?'selected':''}>SHORT</option>
+            </select></td>
+            <td><input type="number" step="any" class="margin" value="${data.margin||''}" oninput="updateAll()"></td>
+            <td><input type="number" step="any" class="lev" value="${data.lev||''}" oninput="updateAll()"></td>
+            <td><input type="number" step="any" class="entry" value="${data.entry||''}" oninput="updateAll()"></td>
+            <td><input type="number" step="any" class="exit" value="${data.exit||''}" oninput="updateAll()"></td>
+            ${tpCols}
+            <td class="res-roi" style="font-weight:bold">0%</td>
+            <td class="res-pl" style="font-weight:bold">$0.00</td>
+            <td>${!isFirst ? '<button onclick="this.closest(\'tr\').remove();updateAll()">×</button>' : ''}</td>
+        `;
+        return tr;
+    }
+
+    function addTrade(day) {
+        const rows = document.querySelectorAll(`tr[data-day="${day}"]`);
+        rows[rows.length-1].after(createRow(day, '', {}, false));
+        updateAll();
+    }
+
+    function updateAll() {
+        let tOver = 0, nProfit = 0, tLoss = 0, tCount = 0;
+        const month = document.getElementById('monthSelect').value;
+        const dataSave = {};
+
+        document.querySelectorAll('#tableBody tr').forEach(row => {
+            const d = row.getAttribute('data-day');
+            const side = row.querySelector('.side').value;
+            const m = parseFloat(row.querySelector('.margin').value) || 0;
+            const l = parseFloat(row.querySelector('.lev').value) || 0;
+            const en = parseFloat(row.querySelector('.entry').value) || 0;
+            const ex = parseFloat(row.querySelector('.exit').value) || 0;
+
+            const rowData = {
+                side, margin: row.querySelector('.margin').value, lev: row.querySelector('.lev').value,
+                entry: row.querySelector('.entry').value, exit: row.querySelector('.exit').value
+            };
+
+            // Update TP hits and gather data
+            for(let i=1; i<=6; i++) {
+                const input = row.querySelector(`.tp${i}`);
+                const check = input.previousElementSibling;
+                if(check.checked) input.classList.add('hit');
+                else input.classList.remove('hit');
+                
+                rowData[`tp${i}`] = input.value;
+                rowData[`tp${i}_hit`] = check.checked;
+            }
+
+            row.classList.remove('row-profit', 'row-loss');
+            if (en > 0 && m > 0 && ex > 0) {
+                let roi = ((side === 'LONG' ? ex-en : en-ex) / en) * l * 100;
+                let pl = (roi/100) * m;
+                row.querySelector('.res-roi').innerText = roi.toFixed(1) + "%";
+                row.querySelector('.res-pl').innerText = (pl>=0?"+$":"-$") + Math.abs(pl).toFixed(2);
+                row.classList.add(pl >= 0 ? 'row-profit' : 'row-loss');
+                if(pl >= 0) nProfit += pl; else tLoss += Math.abs(pl);
+                tOver += (m*l); tCount++;
+            }
+
+            if(!dataSave[`day_${d}`]) dataSave[`day_${d}`] = [];
+            dataSave[`day_${d}`].push(rowData);
+        });
+
+        localStorage.setItem(storageKey + '_' + month, JSON.stringify(dataSave));
+        document.getElementById('stat-turnover').innerText = "$" + tOver.toLocaleString();
+        document.getElementById('stat-profit').innerText = "+$" + nProfit.toFixed(2);
+        document.getElementById('stat-loss').innerText = "-$" + tLoss.toFixed(2);
+        document.getElementById('stat-trades').innerText = tCount;
+    }
+
+    async function downloadPDF() {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF('l', 'mm', 'a4');
+        const month = document.getElementById('monthSelect').value;
+
+        doc.setFontSize(18); doc.setTextColor(37, 99, 235);
+        doc.text("CRYPTO TRADING JOURNAL REPORT", 14, 15);
+
+        const stats = [
+            ["Turnover", "Net Profit", "Total Loss", "Trades"],
+            [document.getElementById('stat-turnover').innerText, 
+             document.getElementById('stat-profit').innerText, 
+             document.getElementById('stat-loss').innerText, 
+             document.getElementById('stat-trades').innerText]
+        ];
+        doc.autoTable({ body: stats, startY: 22, theme: 'grid' });
+
+        const body = [];
+        document.querySelectorAll('#tableBody tr').forEach(tr => {
+            const m = tr.querySelector('.margin').value;
+            const en = tr.querySelector('.entry').value;
+            if (m !== "" || en !== "") {
+                body.push([
+                    tr.getAttribute('data-day'), tr.querySelector('.side').value,
+                    "$" + m, tr.querySelector('.lev').value,
+                    en, tr.querySelector('.exit').value,
+                    tr.querySelector('.tp1').value, tr.querySelector('.tp2').value,
+                    tr.querySelector('.tp3').value, tr.querySelector('.tp4').value,
+                    tr.querySelector('.tp5').value, tr.querySelector('.tp6').value,
+                    tr.querySelector('.res-roi').innerText, tr.querySelector('.res-pl').innerText
+                ]);
+            }
+        });
+
+        doc.autoTable({
+            head: [['Day', 'Side', 'Margin', 'Lev', 'Entry', 'Exit', 'TP1', 'TP2', 'TP3', 'TP4', 'TP5', 'TP6', 'ROI%', 'P/L $']],
+            body: body,
+            startY: doc.lastAutoTable.finalY + 10,
+            theme: 'striped',
+            headStyles: { fillColor: [37, 99, 235] },
+            styles: { fontSize: 8 }
+        });
+
+        doc.save(`Journal_${month}.pdf`);
+    }
+
+    function clearData() { if(confirm("Clear Month?")) { localStorage.clear(); generateTable(); } }
+    window.onload = generateTable;
+</script>
+</body>
+</html>
